@@ -2,10 +2,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from state import IncidentState
-
-
-def triage_agent(state: IncidentState) -> dict:
-    return {}
+from agents.triage import triage_agent
 
 
 def auto_remediation_agent(state: IncidentState) -> dict:
