@@ -3,14 +3,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from state import IncidentState
 from agents.triage import triage_agent
-
-
-def auto_remediation_agent(state: IncidentState) -> dict:
-    return {}
-
-
-def playbook_agent(state: IncidentState) -> dict:
-    return {}
+from agents.remediation import auto_remediation_agent, gen_playbook_agent
 
 
 def reporter_agent(state: IncidentState) -> dict:
@@ -28,7 +21,7 @@ def build_graph(checkpointer):
 
     graph.add_node('triage',   triage_agent)
     graph.add_node('auto_fix', auto_remediation_agent)
-    graph.add_node('gen_playbook', playbook_agent)
+    graph.add_node('gen_playbook', gen_playbook_agent)
     graph.add_node('report',       reporter_agent)
 
     graph.set_entry_point('triage')
