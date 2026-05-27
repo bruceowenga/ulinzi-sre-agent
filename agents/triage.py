@@ -1,6 +1,6 @@
 from pathlib import Path
 import instructor
-from ollama import Client
+from agents.llm import make_instructor_client
 from pydantic import BaseModel, Field
 from typing import Literal
 from langfuse import observe
@@ -29,8 +29,8 @@ def _build_prompt(state: IncidentState) -> str:
 
 
 def _call_llm(model: str, prompt: str) -> TriageResult:
-    client = instructor.from_ollama(Client())
-    return client.chat(
+    client = make_instructor_client()
+    return client.chat.completions.create(
         model=model,
         messages=[
             {

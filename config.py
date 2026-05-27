@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
+    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
     prometheus_url: str = "http://localhost:9090"
     loki_url: str = "http://localhost:3100"
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_public_key: str = ""
     langfuse_host: str = "http://localhost:3000"
+    nvidia_build_api_key: str = ""
     primary_model: str = 'qwen2.5:1.5b'
     fallback_model: str = 'phi3.5:mini'
     confidence_threshold: float = 0.6

@@ -1,6 +1,6 @@
 from langgraph.types import interrupt
 import instructor
-from ollama import Client
+from agents.llm import make_instructor_client
 from pathlib import Path
 from langfuse import observe
 
@@ -12,7 +12,7 @@ PROMPTS_DIR = Path(__file__).parent.parent / 'prompts'
 
 
 def _generate_playbook(state: IncidentState) -> str:
-    client = instructor.from_ollama(Client())
+    client = make_instructor_client()
     prompt = (
         f"Incident: {state['alert_name']}\n"
         f"Severity: {state['severity']}\n"
@@ -20,7 +20,7 @@ def _generate_playbook(state: IncidentState) -> str:
         f"Affected services: {', '.join(state['affected_services'])}\n\n"
         "Write a numbered step-by-step remediation playbook for an SRE."
     )
-    response = client.chat(
+    response = client.chat.completions.create(
         model=settings.primary_model,
         messages=[
             {
@@ -34,7 +34,7 @@ def _generate_playbook(state: IncidentState) -> str:
         ],
         response_model=None,
     )
-    return response.message.content
+    return response.choices[0].message.content
 
 
 @observe()

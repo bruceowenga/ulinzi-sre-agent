@@ -20,16 +20,22 @@ async def main():
     async with AsyncSqliteSaver.from_conn_string('incidents.db') as checkpointer:
         app = build_graph(checkpointer)
 
-        async def run_graph(incident: IncidentState)-> None:
-            thread_id = f"{incident['alert_name']} -{incident['triggered_at']}"
+        async def run_graph(incident: IncidentState) -> None:
+            thread_id = f"{incident['alert_name']}-{incident['triggered_at']}"
             config = {'configurable': {'thread_id': thread_id}}
 
             log.info('Incident received: %s', incident['alert_name'])
-            result = await app.invoke(incident, config=config)
+            result = await app.ainvoke(incident, config=config)
 
-            interrupts = result.get('__interrupt__')
-            if interrupts:
-                data = interrupts[0].value
+            # In LangGraph 0.3.x, interrupt metadata lives on the graph state
+            # object, not in the ainvoke return value.
+            graph_state = await app.aget_state(config)
+            pending_interrupts = [
+                i for task in graph_state.tasks for i in task.interrupts
+            ]
+
+            if pending_interrupts:
+                data = pending_interrupts[0].value
                 print(f"\n{'=' * 60}")
                 print(f"  APPROVAL REQUIRED")
                 print(f"  Alert:    {data['alert_name']}")
@@ -41,7 +47,7 @@ async def main():
 
                 await app.ainvoke(
                     Command(resume={'approved': approved}),
-                    config=config
+                    config=config,
                 )
                 status = 'approved and executed' if approved else 'rejected'
                 log.info('Incident %s: %s', incident['alert_name'], status)
@@ -54,7 +60,7 @@ async def main():
                 )
 
         agent = MonitorAgent(on_incident=run_graph)
-        log.info('Ulinzi stared. Monitoring...')
+        log.info('Ulinzi started. Monitoring...')
         await agent.start()
 
 if __name__ == '__main__':
