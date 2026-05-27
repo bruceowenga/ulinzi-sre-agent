@@ -1,66 +1,118 @@
 # Ulinzi
 
-A multi-agent SRE incident responder built with LangGraph, Ollama, and Prometheus. Monitors a Linux/Docker stack, classifies incidents with a local LLM, executes safe runbooks automatically, and routes high-severity incidents to a human-in-the-loop approval flow.
+A multi-agent SRE incident responder built with LangGraph, Ollama, and Prometheus. Monitors a Linux/Docker stack, classifies incidents with a local or cloud LLM, executes safe runbooks automatically, and routes high-severity incidents to a human-in-the-loop approval flow.
 
 ![Python](https://img.shields.io/badge/python-3.12+-blue)
-![Tests](https://img.shields.io/badge/tests-35%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-39%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
 ## An incident, from detection to notification
 
-*The following output is synthetic, representative of a real run against the Odin homelab stack. It will be replaced with live output once Phase 4 (ReporterAgent) is complete.*
+*Output captured from a live run against the Odin homelab stack. 2026-05-27.*
+
+Two incidents fired in the same polling cycle. They took different paths through the graph.
+
+---
+
+### Path 1 -- auto remediation (low/medium severity)
 
 **Alert fired**
 
 ```
-alert:    ContainerRestartLoop
+alert:    ContainerMemoryHigh
 source:   prometheus (cAdvisor)
-payload:  increase(container_restart_count[15m]) = 4
-fired at: 2026-05-26T08:14:32+00:00
+payload:  container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.85
+fired at: 2026-05-27T17:39:54+00:00
 ```
 
-**TriageAgent** classified the incident using `qwen2.5:1.5b` via Ollama and instructor:
+**TriageAgent** classified the incident using MiniMax M2.7 via NVIDIA NIM:
 
 ```json
 {
   "severity": "medium",
-  "probable_cause": "Loki container restarting due to sustained memory pressure from log ingestion volume.",
-  "affected_services": ["loki-loki-1"],
-  "confidence": 0.82
+  "probable_cause": "Container memory usage exceeds 85% of the allocated limit.",
+  "affected_services": ["prometheus"],
+  "confidence": 0.88
 }
 ```
 
-**RemediationAgent** looked up the runbook registry and executed automatically:
+**RemediationAgent** looked up the runbook registry -- no runbook registered for this alert type, so it logged the action and moved on:
 
 ```
-runbook:  restart_container
-target:   loki-loki-1
-result:   Restarted container: loki-loki-1
+runbook:  (none registered)
+result:   no runbook
 ```
 
 **ReporterAgent** pushed to three sinks:
 
 ```
-ntfy:    pushed to odin-alerts      [08:14:39 +00:00]
+ntfy:    pushed to odin-alerts      [17:40:55 +00:00]
 Loki:    incident log written       [job=sre-agent, severity=medium]
-Grafana: annotation posted          [id=142]
+Grafana: annotation posted          [time=17:40:55]
 ```
 
-Total time from alert to notification: **7 seconds.**
+Total time from alert to notification: **61 seconds** (MiniMax M2.7 classification via NVIDIA NIM).
 
-For high and critical severity incidents, the graph pauses at a human approval step before any action is taken. The operator receives the LLM-generated playbook via ntfy and resumes or rejects the run from the command line.
+---
+
+### Path 2 -- human-in-the-loop (high/critical severity)
+
+**Alert fired**
+
+```
+alert:    LokiIngestionStopped
+source:   prometheus
+payload:  rate(loki_ingester_streams_created_total[5m]) == 0
+fired at: 2026-05-27T17:39:54+00:00
+```
+
+**TriageAgent** classified the incident:
+
+```json
+{
+  "severity": "high",
+  "probable_cause": "Loki ingestion pipeline has stopped -- no new streams created in the last 5 minutes.",
+  "affected_services": ["loki"],
+  "confidence": 0.94
+}
+```
+
+**RemediationAgent** generated a 10-step playbook and paused for approval. Excerpt:
+
+```
+| # | Action                                   | Command                                         |
+|---|------------------------------------------|-------------------------------------------------|
+| 1 | Verify the Loki container is running     | sudo docker ps -a --filter name=loki            |
+| 2 | Pull recent logs from the container      | sudo docker logs loki --tail=300 2>&1           |
+| 3 | Check disk space on the volume Loki      | df -h /var/lib/loki                             |
+|   | writes to                                |                                                 |
+| 4 | Verify inode availability                | df -i /var/lib/loki                             |
+| 5 | Inspect Docker storage usage             | sudo docker system df                           |
+| 6 | If disk/inodes are exhausted, free space | sudo docker system prune -af --volumes          |
+| 7 | Confirm write permissions on Loki data   | ls -la /var/lib/loki                            |
+| 8 | Restart the Loki container               | sudo docker restart loki                        |
+| 9 | Verify ingestion has resumed             | curl -sf http://localhost:3100/ready            |
+```
+
+Operator approved at the terminal. **ReporterAgent** pushed to three sinks:
+
+```
+ntfy:    pushed to odin-alerts      [17:57:22 +00:00]
+Loki:    incident log written       [job=sre-agent, severity=high]
+Grafana: annotation posted          [time=17:57:22]
+```
 
 ---
 
 ## What it is
 
-Ulinzi polls a Prometheus instance across four async loops (host health, containers, observability stack, services), classifies any threshold crossing using a local LLM with structured output validation, and routes the incident through a LangGraph state machine. Low and medium severity incidents execute a runbook automatically. High and critical incidents generate a step-by-step playbook and wait for human approval before proceeding.
+Ulinzi polls a Prometheus instance across four async loops (host health, containers, observability stack, services), classifies any threshold crossing using a local or cloud LLM with structured output validation, and routes the incident through a LangGraph state machine. Low and medium severity incidents execute a runbook automatically. High and critical incidents generate a step-by-step playbook and wait for human approval before proceeding.
 
-Small models are the deliberate default. The primary model (`qwen2.5:1.5b`) uses approximately 1.8 GB of RAM. The fallback (`phi3.5:mini`) loads only when classification confidence falls below 0.6. Both run locally via Ollama with no external API calls, no per-token cost, and no data leaving the machine.
+Small models are the deliberate default. The primary model (`qwen2.5:1.5b`) uses approximately 1.8 GB of RAM and runs locally via Ollama with no external API calls, no per-token cost, and no data leaving the machine. The fallback (`phi3.5:mini`) loads only when classification confidence falls below 0.6.
 
-For teams with access to larger models or cloud inference, the model layer is configurable. Any Ollama-compatible model works as a drop-in replacement via two config fields (`PRIMARY_MODEL`, `FALLBACK_MODEL`). The architecture is designed to support a BYOM (Bring Your Own Model) configuration, whether that is a self-hosted Llama or Mistral instance, or a cloud provider like Groq or OpenAI.
+For teams with access to larger models or cloud inference, the model layer is configurable. Setting `NVIDIA_BUILD_API_KEY` in `.env` routes all inference to NVIDIA NIM instead of local Ollama. Any OpenAI-compatible endpoint works as a drop-in via `PRIMARY_MODEL`, `FALLBACK_MODEL`, and the relevant API key. The architecture is designed for BYOM (Bring Your Own Model): swap the endpoint, keep the pipeline.
 
 Ulinzi is also the core prototype for **Linzi AI**, an agentic SRE platform targeting SMBs in Kenya and East Africa. The delta between this prototype and a multi-tenant SaaS product is a configuration layer and a REST API wrapper. The agentic logic does not change.
 
@@ -95,7 +147,7 @@ graph TD;
 | Agent | Responsibility | Uses LLM |
 |---|---|---|
 | MonitorAgent | Polls Prometheus and Loki across 4 async loops | No |
-| TriageAgent | Classifies severity, probable cause, affected services | Yes (qwen2.5:1.5b) |
+| TriageAgent | Classifies severity, probable cause, affected services | Yes (configurable model) |
 | RemediationAgent | Executes runbook or generates playbook with human approval | Yes (playbook path only) |
 | ReporterAgent | Pushes to ntfy, Loki, and Grafana annotations | No |
 
@@ -104,11 +156,9 @@ graph TD;
 ## Prerequisites
 
 - Python 3.12+
-- [Ollama](https://ollama.com) running locally with both models pulled:
-  ```
-  ollama pull qwen2.5:1.5b
-  ollama pull phi3.5:mini
-  ```
+- One of:
+  - [Ollama](https://ollama.com) running locally with models pulled: `ollama pull qwen2.5:1.5b && ollama pull phi3.5:mini`
+  - An NVIDIA NIM API key (or any OpenAI-compatible endpoint)
 - A Prometheus instance with Node Exporter and cAdvisor scrape targets
 - A Loki instance (optional, for log-based alerts)
 - An ntfy instance (optional, for mobile notifications)
@@ -142,10 +192,19 @@ All configuration is loaded from `.env`. See `.env.example` for the full list. K
 | `NTFY_URL` | `http://localhost:8070` | ntfy server URL |
 | `NTFY_TOKEN` | (required) | ntfy access token |
 | `NTFY_TOPIC` | `odin-alerts` | ntfy topic name |
-| `PRIMARY_MODEL` | `qwen2.5:1.5b` | Ollama model for triage |
-| `FALLBACK_MODEL` | `phi3.5:mini` | Fallback model when confidence < 0.6 |
+| `PRIMARY_MODEL` | `qwen2.5:1.5b` | Model for triage and playbook generation |
+| `FALLBACK_MODEL` | `phi3.5:mini` | Fallback when confidence falls below threshold |
 | `CONFIDENCE_THRESHOLD` | `0.6` | Threshold below which fallback model is used |
+| `NVIDIA_BUILD_API_KEY` | (optional) | Set to route inference to NVIDIA NIM instead of Ollama |
 | `DRY_RUN` | `false` | Set to `true` to log runbook actions without executing |
+
+To use NVIDIA NIM:
+
+```
+NVIDIA_BUILD_API_KEY=nvapi-...
+PRIMARY_MODEL=minimaxai/minimax-m2.7
+FALLBACK_MODEL=minimaxai/minimax-m2.7
+```
 
 ---
 
@@ -169,7 +228,7 @@ The process opens `incidents.db` (SQLite) on startup. In-flight incidents, inclu
 pytest -v
 ```
 
-35 tests covering MonitorAgent deduplication and polling logic, TriageResult schema validation and fallback behaviour, and runbook dry-run correctness. All HTTP calls to Prometheus and Ollama are mocked.
+39 tests covering MonitorAgent deduplication and polling logic, TriageResult schema validation and fallback behaviour, runbook dry-run correctness, and ReporterAgent sink payloads. All HTTP calls to Prometheus, Ollama, ntfy, Loki, and Grafana are mocked.
 
 ---
 
@@ -179,8 +238,10 @@ pytest -v
 ulinzi/
 ├── agents/
 │   ├── monitor.py       # Prometheus + Loki polling, 4 async loops
-│   ├── triage.py        # instructor + Ollama classification
-│   └── remediation.py   # runbook dispatch + playbook generation + interrupt
+│   ├── triage.py        # instructor + structured output classification
+│   ├── remediation.py   # runbook dispatch + playbook generation + interrupt
+│   ├── reporter.py      # ntfy, Loki, and Grafana annotation sinks
+│   └── llm.py           # instructor client factory (Ollama or NVIDIA NIM)
 ├── runbooks/
 │   ├── __init__.py      # registry mapping alert names to callables
 │   ├── container_oom.py # docker restart
@@ -189,6 +250,8 @@ ulinzi/
 ├── prompts/
 │   ├── triage.txt       # system prompt for TriageAgent
 │   └── playbook.txt     # system prompt for playbook generation
+├── dashboards/
+│   └── sre-agent.json   # 5-panel Grafana dashboard
 ├── tests/
 ├── state.py             # IncidentState TypedDict (shared graph state)
 ├── config.py            # pydantic-settings config loaded from .env
@@ -208,7 +271,7 @@ The agentic core (all four agents) does not change between prototype and product
 | Config | `.env` per server | Multi-tenant database row per customer |
 | Prometheus source | Hardcoded Odin endpoint | Customer-supplied endpoint |
 | Entry point | Polling loop in `main.py` | REST API: `POST /incidents/ingest` |
-| LLM | Local Ollama | Groq free tier (Llama 3.1 70B) |
+| LLM | Local Ollama or NVIDIA NIM | Groq free tier (Llama 3.1 70B) |
 | Notifications | Personal ntfy topic | Configurable: Slack, PagerDuty, WhatsApp Business |
 | Runbooks | Python functions | YAML-defined marketplace with approval policies |
 
