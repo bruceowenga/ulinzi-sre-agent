@@ -1,0 +1,340 @@
+{
+    "title": "Ulinzi SRE Agent",
+    "uid": "ulinzi-sre-v1",
+    "description": "Incident telemetry from the Ulinzi multi-agent SRE responder.",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timezone": "browser",
+    "templating": {
+        "list": [
+            {
+                "current": {},
+                "hide": 0,
+                "includeAll": false,
+                "label": "Loki",
+                "multi": false,
+                "name": "datasource",
+                "options": [],
+                "query": "loki",
+                "refresh": 1,
+                "type": "datasource"
+            }
+        ]
+    },
+    "panels": [
+        {
+            "id": 1,
+            "title": "Incidents Over Time",
+            "type": "timeseries",
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 18,
+                "h": 8
+            },
+            "datasource": {
+                "type": "loki",
+                "uid": "${datasource}"
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "${datasource}"
+                    },
+                    "expr": "sum by (severity) (count_over_time({job=\"sre-agent\"}[$__interval]))",
+                    "legendFormat": "{{severity}}",
+                    "refId": "A"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "lineWidth": 2,
+                        "fillOpacity": 10
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "count"
+                    ],
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            }
+        },
+        {
+            "id": 2,
+            "title": "Active Incidents (1h)",
+            "type": "stat",
+            "gridPos": {
+                "x": 18,
+                "y": 0,
+                "w": 6,
+                "h": 8
+            },
+            "datasource": {
+                "type": "loki",
+                "uid": "${datasource}"
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "${datasource}"
+                    },
+                    "expr": "count_over_time({job=\"sre-agent\"}[1h])",
+                    "refId": "A"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 3
+                            },
+                            {
+                                "color": "red",
+                                "value": 10
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                }
+            },
+            "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            }
+        },
+        {
+            "id": 3,
+            "title": "Incidents by Severity",
+            "type": "barchart",
+            "gridPos": {
+                "x": 0,
+                "y": 8,
+                "w": 12,
+                "h": 8
+            },
+            "datasource": {
+                "type": "loki",
+                "uid": "${datasource}"
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "${datasource}"
+                    },
+                    "expr": "sum by (severity) (count_over_time({job=\"sre-agent\"}[$__interval]))",
+                    "legendFormat": "{{severity}}",
+                    "refId": "A",
+                    "instant": true
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "fillOpacity": 80,
+                        "lineWidth": 1
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "low"
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "green",
+                                    "mode": "fixed"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "medium"
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "yellow",
+                                    "mode": "fixed"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "high"
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "orange",
+                                    "mode": "fixed"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "critical"
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "red",
+                                    "mode": "fixed"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "options": {
+                "barWidth": 0.6,
+                "groupWidth": 0.7,
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom"
+                },
+                "orientation": "auto",
+                "xTickLabelRotation": 0
+            }
+        },
+        {
+            "id": 4,
+            "title": "Actions Taken",
+            "type": "piechart",
+            "gridPos": {
+                "x": 12,
+                "y": 8,
+                "w": 12,
+                "h": 8
+            },
+            "datasource": {
+                "type": "loki",
+                "uid": "${datasource}"
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "${datasource}"
+                    },
+                    "expr": "sum by (action_taken) (count_over_time({job=\"sre-agent\"} | json | action_taken != \"\" [$__interval]))",
+                    "legendFormat": "{{action_taken}}",
+                    "refId": "A",
+                    "instant": true
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "displayLabels": [
+                    "name",
+                    "percent"
+                ],
+                "legend": {
+                    "calcs": [
+                        "sum"
+                    ],
+                    "displayMode": "table",
+                    "placement": "right"
+                },
+                "pieType": "pie",
+                "tooltip": {
+                    "mode": "single"
+                }
+            }
+        },
+        {
+            "id": 5,
+            "title": "Incident Log",
+            "type": "logs",
+            "gridPos": {
+                "x": 0,
+                "y": 16,
+                "w": 24,
+                "h": 8
+            },
+            "datasource": {
+                "type": "loki",
+                "uid": "${datasource}"
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "${datasource}"
+                    },
+                    "expr": "{job=\"sre-agent\"}",
+                    "refId": "A"
+                }
+            ],
+            "options": {
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": true,
+                "showCommonLabels": false,
+                "showLabels": true,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": true
+            }
+        }
+    ]
+}

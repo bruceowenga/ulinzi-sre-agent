@@ -58,7 +58,9 @@ For high and critical severity incidents, the graph pauses at a human approval s
 
 Ulinzi polls a Prometheus instance across four async loops (host health, containers, observability stack, services), classifies any threshold crossing using a local LLM with structured output validation, and routes the incident through a LangGraph state machine. Low and medium severity incidents execute a runbook automatically. High and critical incidents generate a step-by-step playbook and wait for human approval before proceeding.
 
-It runs on constrained hardware. The primary model (`qwen2.5:1.5b`) uses approximately 1.8 GB of RAM. The fallback model (`phi3.5:mini`) loads only when the primary classification confidence falls below 0.6. Both run locally via Ollama with no external API calls required.
+Small models are the deliberate default. The primary model (`qwen2.5:1.5b`) uses approximately 1.8 GB of RAM. The fallback (`phi3.5:mini`) loads only when classification confidence falls below 0.6. Both run locally via Ollama with no external API calls, no per-token cost, and no data leaving the machine.
+
+For teams with access to larger models or cloud inference, the model layer is configurable. Any Ollama-compatible model works as a drop-in replacement via two config fields (`PRIMARY_MODEL`, `FALLBACK_MODEL`). The architecture is designed to support a BYOM (Bring Your Own Model) configuration, whether that is a self-hosted Llama or Mistral instance, or a cloud provider like Groq or OpenAI.
 
 Ulinzi is also the core prototype for **Linzi AI**, an agentic SRE platform targeting SMBs in Kenya and East Africa. The delta between this prototype and a multi-tenant SaaS product is a configuration layer and a REST API wrapper. The agentic logic does not change.
 

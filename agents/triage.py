@@ -3,6 +3,7 @@ import instructor
 from ollama import Client
 from pydantic import BaseModel, Field
 from typing import Literal
+from langfuse import observe
 
 from config import settings
 from state import IncidentState
@@ -46,6 +47,7 @@ def _call_llm(model: str, prompt: str) -> TriageResult:
     )
 
 
+@observe()
 def triage_agent(state: IncidentState) -> dict:
     prompt = _build_prompt(state)
     result = _call_llm(settings.primary_model, prompt)

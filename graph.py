@@ -4,10 +4,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from state import IncidentState
 from agents.triage import triage_agent
 from agents.remediation import auto_remediation_agent, gen_playbook_agent
-
-
-def reporter_agent(state: IncidentState) -> dict:
-    return {}
+from agents.reporter import reporter_agent
 
 
 def route_by_severity(state: IncidentState) -> str:

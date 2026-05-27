@@ -2,6 +2,7 @@ from langgraph.types import interrupt
 import instructor
 from ollama import Client
 from pathlib import Path
+from langfuse import observe
 
 from config import settings
 from state import IncidentState
@@ -36,6 +37,7 @@ def _generate_playbook(state: IncidentState) -> str:
     return response.message.content
 
 
+@observe()
 def auto_remediation_agent(state: IncidentState) -> dict:
     runbook = get_runbook(state['alert_name'])
     if not runbook:
@@ -46,6 +48,7 @@ def auto_remediation_agent(state: IncidentState) -> dict:
     return {'action_taken': result}
 
 
+@observe()
 def gen_playbook_agent(state: IncidentState) -> dict:
     playbook = _generate_playbook(state)
     approval = interrupt({
